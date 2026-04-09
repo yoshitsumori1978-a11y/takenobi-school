@@ -767,6 +767,10 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
             <span id="todayItemsToggle">&#x25BC;</span>
           </div>
           <div class="today-panel-body" id="todayItemsBody">
+            <div style="display:flex;gap:6px;padding:8px;border-bottom:1px solid rgba(140,200,90,.1);">
+              <input id="customItemInput" class="chat-input" placeholder="例: 絵の具セット・体操服" style="flex:1;font-size:13px;" onkeydown="if(event.key==='Enter'){addCustomItem();}">
+              <button class="quiz-btn" onclick="addCustomItem()" style="font-size:12px;padding:6px 14px;">&#x2795; 追加</button>
+            </div>
             <div id="todayItemsList"></div>
           </div>
         </div>
@@ -3574,25 +3578,7 @@ function renderTomorrowCheck(){
     html+='<div style="text-align:center;padding:16px;color:var(--text-dim);font-size:13px;">\u{1F343} \u30B5\u30B5\u30EA\u30F3\u300C\u4ECA\u65E5\u3082\u660E\u65E5\u3082\u7279\u5225\u306A\u4E88\u5B9A\u306F\u306A\u3044\u3088\u3002\u306E\u3093\u3073\u308A\u904E\u3054\u305D\u3046\u306D\uFF01\u300D</div>';
   }
 
-  // --- Section: Daily items checklist ---
-  var dailyItems=[
-    {key:'d_textbook',icon:'\u{1F4DA}',label:'\u6559\u79D1\u66F8\u30FB\u30CE\u30FC\u30C8\uFF08\u6642\u9593\u5272\u78BA\u8A8D\uFF09'},
-    {key:'d_pencil',icon:'\u270F\uFE0F',label:'\u7B46\u8A18\u7528\u5177\uFF08\u30B7\u30E3\u30FC\u30D7\u30DA\u30F3\u30FB\u6D88\u3057\u30B4\u30E0\u30FB\u5B9A\u898F\uFF09'},
-    {key:'d_phone',icon:'\u{1F4F1}',label:'\u30B9\u30DE\u30DB\uFF08\u5145\u96FB\u3057\u305F\uFF1F\uFF09'},
-    {key:'d_shoes',icon:'\u{1F45F}',label:'\u4E0A\u5C65\u304D'},
-    {key:'d_money',icon:'\u{1F4B0}',label:'\u4EA4\u901A\u8CBB\u30FB\u304A\u5C0F\u9063\u3044'},
-    {key:'d_pe',icon:'\u{1F3BD}',label:'\u4F53\u80B2\u304C\u3042\u308B\u65E5\u2192\u4F53\u64CD\u670D'},
-    {key:'d_lunch',icon:'\u{1F371}',label:'\u304A\u5F01\u5F53\u30FB\u6C34\u7B52'},
-    {key:'d_hanky',icon:'\u{1FAE7}',label:'\u30CF\u30F3\u30AB\u30C1\u30FB\u30C6\u30A3\u30C3\u30B7\u30E5'},
-    {key:'d_homework',icon:'\u{1F4DD}',label:'\u5BBF\u984C\u306F\u7D42\u308F\u3063\u305F\uFF1F'}
-  ];
-  var dailyChecked=dailyItems.filter(function(it){return gData.prepChecks[it.key];}).length;
-  html+=prepSectionHtml('sec-daily','\u{1F343} \u6BCE\u65E5\u306E\u6301\u3061\u7269\u30C1\u30A7\u30C3\u30AF','var(--bamboo)','rgba(90,158,111,0.05)',dailyItems.length,dailyChecked,true);
-  html+='<div class="prep-section-body open" id="sec-daily-body">';
-  dailyItems.forEach(function(it){
-    html+=prepCheckItemHtml(it.key,it.icon,it.label,!!gData.prepChecks[it.key]);
-  });
-  html+='</div></div>';
+  // --- 毎日の持ち物チェックは削除（ホームの「今日の持ち物」カスタム欄に移行） ---
 
   // Reset button
   html+='<div style="text-align:right;margin-top:8px;"><button onclick="resetPrepChecks()" style="font-size:11px;padding:4px 12px;border:1px solid rgba(90,158,111,0.2);border-radius:8px;background:transparent;color:var(--text-dim);cursor:pointer;">\u{1F504} \u30EA\u30BB\u30C3\u30C8</button></div>';
@@ -5518,6 +5504,22 @@ function changeCalDay(dir) {
   if (dir === 0) { calDayOffset = 0; } else { calDayOffset += dir; }
   updateCalDayLabel();
   fetchTodayCalEvents();
+  syncMonthCalSelectionFromOffset();
+}
+
+// 「今日の予定」のcalDayOffsetに合わせて月間カレンダーの黄色枠を移動
+function syncMonthCalSelectionFromOffset() {
+  var target = new Date();
+  target.setDate(target.getDate() + calDayOffset);
+  var dateStr = target.getFullYear() + '-' + String(target.getMonth()+1).padStart(2,'0') + '-' + String(target.getDate()).padStart(2,'0');
+  monthCalSelected = (calDayOffset === 0) ? null : dateStr;
+  // 選択日が別の月なら月を切り替えて再取得
+  if (target.getFullYear() !== monthCalYear || target.getMonth() !== monthCalMonth) {
+    monthCalYear = target.getFullYear();
+    monthCalMonth = target.getMonth();
+    if (gcalAccessToken) { fetchMonthEvents(); return; }
+  }
+  renderMonthCalendar();
 }
 
 function updateCalDayLabel() {
@@ -5697,7 +5699,24 @@ function changeMonth(dir) {
   monthCalSelected = null;
   if (gcalAccessToken) fetchMonthEvents(); else renderMonthCalendar();
 }
-function selectCalDay(dateStr) { monthCalSelected = (monthCalSelected === dateStr) ? null : dateStr; renderMonthCalendar(); }
+function selectCalDay(dateStr) {
+  // トグル: 同じ日を再タップしたら選択解除＆今日に戻す
+  if (monthCalSelected === dateStr) {
+    monthCalSelected = null;
+    calDayOffset = 0;
+  } else {
+    monthCalSelected = dateStr;
+    // 今日からのオフセット（日数）を計算して「今日の予定」カードを同期
+    var today = new Date();
+    today.setHours(0,0,0,0);
+    var target = new Date(dateStr + 'T00:00:00');
+    target.setHours(0,0,0,0);
+    calDayOffset = Math.round((target.getTime() - today.getTime()) / (1000*60*60*24));
+  }
+  updateCalDayLabel();
+  if (gcalAccessToken) fetchTodayCalEvents();
+  renderMonthCalendar();
+}
 
 function saveCalMemo() {
   if (!monthCalSelected) return;
@@ -5873,17 +5892,8 @@ function togglePrivateTodo(idx) {
 }
 
 // --- ホームダッシュボード ---
-var todayItemsDefs = [
-  {key:'ti_textbook',icon:'\u{1F4DA}',label:'\u6559\u79D1\u66F8\u30FB\u30CE\u30FC\u30C8'},
-  {key:'ti_pencil',icon:'\u270F\uFE0F',label:'\u7B46\u8A18\u7528\u5177'},
-  {key:'ti_phone',icon:'\u{1F4F1}',label:'\u30B9\u30DE\u30DB\uFF08\u5145\u96FB OK\uFF1F\uFF09'},
-  {key:'ti_shoes',icon:'\u{1F45F}',label:'\u4E0A\u5C65\u304D'},
-  {key:'ti_money',icon:'\u{1F4B0}',label:'\u4EA4\u901A\u8CBB\u30FB\u304A\u5C0F\u9063\u3044'},
-  {key:'ti_pe',icon:'\u{1F3BD}',label:'\u4F53\u64CD\u670D\uFF08\u4F53\u80B2\u304C\u3042\u308B\u65E5\uFF09'},
-  {key:'ti_lunch',icon:'\u{1F371}',label:'\u304A\u5F01\u5F53\u30FB\u6C34\u7B52'},
-  {key:'ti_hanky',icon:'\u{1FAE7}',label:'\u30CF\u30F3\u30AB\u30C1\u30FB\u30C6\u30A3\u30C3\u30B7\u30E5'},
-  {key:'ti_homework',icon:'\u{1F4DD}',label:'\u5BBF\u984C'}
-];
+// デフォルトの持ち物リストは廃止（こうたろうが自分でカスタム欄に書く）
+var todayItemsDefs = [];
 
 function getTodayItemsKey() {
   var d = new Date();
@@ -5904,9 +5914,48 @@ function toggleTodayItems() {
   if (body.style.display === 'none') { body.style.display = ''; if (tog) tog.textContent = '\u25BC'; }
   else { body.style.display = 'none'; if (tog) tog.textContent = '\u25B6'; }
 }
+// カスタム持ち物（こうたろうが書き加える「必要な持ち物」）
+function getCustomItemsKey() {
+  var d = new Date();
+  return 'todayItemsCustom_' + d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function getCustomItems() {
+  try { return JSON.parse(localStorage.getItem(getCustomItemsKey()) || '[]'); } catch(e) { return []; }
+}
+function saveCustomItems(arr) {
+  localStorage.setItem(getCustomItemsKey(), JSON.stringify(arr));
+}
+function addCustomItem() {
+  var input = document.getElementById('customItemInput');
+  if (!input) return;
+  var val = input.value.trim();
+  if (!val) return;
+  // 「・」「、」「,」で区切って複数まとめて追加できるようにする
+  var parts = val.split(/[・、,]/).map(function(s){return s.trim();}).filter(function(s){return s.length>0;});
+  var items = getCustomItems();
+  parts.forEach(function(p) {
+    items.push({ id: 'ci_' + Date.now() + '_' + Math.random().toString(36).slice(2,7), label: p, done: false });
+  });
+  saveCustomItems(items);
+  input.value = '';
+  renderTodayItems();
+}
+function toggleCustomItem(id) {
+  var items = getCustomItems();
+  items.forEach(function(it) { if (it.id === id) it.done = !it.done; });
+  saveCustomItems(items);
+  renderTodayItems();
+}
+function deleteCustomItem(id) {
+  var items = getCustomItems().filter(function(it) { return it.id !== id; });
+  saveCustomItems(items);
+  renderTodayItems();
+}
+
 function renderTodayItems() {
   var list = document.getElementById('todayItemsList'); if (!list) return;
   var checked = getTodayItemsChecked();
+  var customItems = getCustomItems();
   var count = 0;
   var html = '';
   todayItemsDefs.forEach(function(it) {
@@ -5916,9 +5965,23 @@ function renderTodayItems() {
       '<div class="today-task-check ' + (done ? 'checked' : '') + '">' + (done ? '\u2713' : '') + '</div>' +
       '<div class="t-task-text">' + it.icon + ' ' + it.label + '</div></div>';
   });
+  // カスタム持ち物を表示
+  if (customItems.length === 0) {
+    html += '<div class="today-task-empty" style="padding:12px;text-align:center;color:var(--text-dim);font-size:12px;">\u{1F4CC} 上の欄に必要な持ち物を書いてください</div>';
+  } else {
+    customItems.forEach(function(it) {
+      if (it.done) count++;
+      html += '<div class="today-task-item ' + (it.done ? 't-done' : '') + '" style="cursor:pointer;">' +
+        '<div class="today-task-check ' + (it.done ? 'checked' : '') + '" onclick="toggleCustomItem(\'' + it.id + '\')">' + (it.done ? '\u2713' : '') + '</div>' +
+        '<div class="t-task-text" onclick="toggleCustomItem(\'' + it.id + '\')">\u{1F4CC} ' + escHtml2(it.label) + '</div>' +
+        '<button onclick="deleteCustomItem(\'' + it.id + '\')" style="background:none;border:none;color:#D94E4E;font-size:14px;cursor:pointer;padding:0 6px;" title="\u524A\u9664">\u{1F5D1}</button>' +
+        '</div>';
+    });
+  }
   list.innerHTML = html;
   var counter = document.getElementById('todayItemsCount');
-  if (counter) counter.textContent = count + '/' + todayItemsDefs.length;
+  var total = todayItemsDefs.length + customItems.length;
+  if (counter) counter.textContent = count + '/' + total;
 }
 
 function renderHomeScheduleWidgets() {
