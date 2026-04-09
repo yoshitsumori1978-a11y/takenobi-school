@@ -2014,7 +2014,8 @@ var GEMINI_LIMIT_KEY='gakkou_gemini_limit';
 var _lastGeminiCall=0;
 var GEMINI_MIN_INTERVAL=6000; // 最低6秒間隔（レート制限回避）
 var GEMINI_DEFAULT_KEY='AIzaSyD8YZoTvFp-Y21l-9O49U2O7jQVyeCNywY';
-if(!localStorage.getItem('gakkou_gemini_key')){localStorage.setItem('gakkou_gemini_key',GEMINI_DEFAULT_KEY);}
+// 既存キーが未設定・空・デフォルトと異なる場合は常にデフォルトキーで上書き（AI先生を確実に使用）
+localStorage.setItem('gakkou_gemini_key',GEMINI_DEFAULT_KEY);
 
 function saveGeminiKey(){
   var inp=document.getElementById('geminiKeyInput');
