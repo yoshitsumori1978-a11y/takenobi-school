@@ -520,6 +520,14 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 .scan-deadline-badge.today{background:rgba(217,78,78,0.12);color:var(--red);}
 .scan-deadline-badge.upcoming{background:rgba(212,150,10,0.12);color:#D4960A;}
 .scan-deadline-badge.done{background:rgba(45,157,120,0.12);color:var(--green);}
+/* === Storage bar & Pagination === */
+.pg-storage-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;margin-bottom:10px;background:rgba(90,158,111,0.05);border:1px solid rgba(90,158,111,0.12);border-radius:8px;font-size:11px;color:#8A8680;}
+.pg-storage-actions{display:flex;gap:6px;}
+.pg-storage-actions button{padding:4px 10px;font-size:11px;border:1px solid rgba(90,158,111,0.2);border-radius:6px;background:transparent;color:var(--bamboo-light);cursor:pointer;font-weight:700;transition:all 0.2s;}
+.pg-storage-actions button:hover{background:rgba(90,158,111,0.1);}
+.pg-pagination{display:flex;align-items:center;justify-content:center;gap:12px;padding:12px 0 4px;font-size:12px;color:#8A8680;}
+.pg-pagination button{padding:6px 16px;font-size:12px;border:1px solid rgba(90,158,111,0.2);border-radius:8px;background:rgba(90,158,111,0.06);color:var(--bamboo-light);cursor:pointer;font-weight:700;transition:all 0.2s;}
+.pg-pagination button:hover{background:rgba(90,158,111,0.15);}
 
 /* === Date Navigation === */
 .date-nav{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px;padding:8px;background:#FAF9F6;border:1px solid #E8E5DE;border-radius:12px;}
@@ -3820,11 +3828,20 @@ function compressAndSavePhoto(dataUrl) {
     canvas.getContext('2d').drawImage(img, 0, 0, w, h);
     var compressed = canvas.toDataURL('image/jpeg', quality);
     canvas.width = 0; canvas.height = 0;
+    // サムネイル生成（100px幅・低品質→メモリ節約）
+    var TH_W = 100;
+    var tw = Math.min(TH_W, img.width), th = Math.round(img.height * tw / img.width);
+    var c2 = document.createElement('canvas');
+    c2.width = tw; c2.height = th;
+    c2.getContext('2d').drawImage(img, 0, 0, tw, th);
+    var thumb = c2.toDataURL('image/jpeg', 0.4);
+    c2.width = 0; c2.height = 0;
     var now = new Date();
     var photo = {
       id: 'sp_' + now.getTime(),
       timestamp: now.getTime(),
       dataUrl: compressed,
+      thumb: thumb,
       date: now.getFullYear() + '/' + String(now.getMonth()+1).padStart(2,'0') + '/' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0'),
       memo: '', deadline: '', action: '', status: 'pending'
     };
@@ -3852,8 +3869,18 @@ function renderPhotoGallery() {
   getScanPhotos(function(photos) { _renderPhotoGalleryInner(photos); });
 }
 
+var _scanGalleryPage = 0;
+var _scanGalleryPerPage = 20;
+var _scanGalleryAllPhotos = [];
+
 function _renderPhotoGalleryInner(photos) {
-  // Update all gallery containers
+  _scanGalleryAllPhotos = photos;
+  _scanGalleryPage = 0;
+  _renderPhotoGalleryPage();
+}
+
+function _renderPhotoGalleryPage() {
+  var photos = _scanGalleryAllPhotos;
   ['pgBody', 'pgBody2'].forEach(function(bodyId) {
     var bodyEl = document.getElementById(bodyId);
     if (!bodyEl) return;
@@ -3861,13 +3888,31 @@ function _renderPhotoGalleryInner(photos) {
       bodyEl.innerHTML = '<div class="photo-gallery-empty">&#x1F343; ササリン「まだスキャン写真はないよ。プリントを撮影してね！」</div>';
       return;
     }
-    var html = '';
-    photos.forEach(function(p) {
+    var start = _scanGalleryPage * _scanGalleryPerPage;
+    var end = Math.min(start + _scanGalleryPerPage, photos.length);
+    var pagePhotos = photos.slice(start, end);
+    var totalPages = Math.ceil(photos.length / _scanGalleryPerPage);
+
+    // ストレージ使用量
+    var totalBytes = 0;
+    photos.forEach(function(p) { totalBytes += (p.dataUrl || '').length + (p.thumb || '').length; });
+    var sizeMB = (totalBytes / 1024 / 1024).toFixed(1);
+
+    var html = '<div class="pg-storage-bar">' +
+      '<span>&#x1F4BE; ' + photos.length + '枚 / 約' + sizeMB + 'MB使用</span>' +
+      '<span class="pg-storage-actions">' +
+        '<button onclick="exportScanPhotos()" title="バックアップ">&#x1F4E5; 保存</button>' +
+        '<button onclick="cleanupOldScanPhotos()" title="古い写真を整理">&#x1F9F9; 整理</button>' +
+      '</span></div>';
+
+    pagePhotos.forEach(function(p) {
       var deadlineBadge = getScanDeadlineBadge(p);
       var statusVal = p.status || 'pending';
       var statusDotClass = statusVal === 'done' ? 'st-done' : statusVal === 'doing' ? 'st-doing' : 'st-pending';
-      var thumbHtml = p.dataUrl ?
-        '<img class="photo-gallery-thumb" src="' + escHtml(p.dataUrl) + '" onclick="previewGalleryPhoto(\'' + escHtml(p.id) + '\')" alt="scan">' :
+      // サムネイルがあればサムネイルを使用（メモリ節約）
+      var imgSrc = p.thumb || p.dataUrl;
+      var thumbHtml = imgSrc ?
+        '<img class="photo-gallery-thumb" src="' + escHtml(imgSrc) + '" onclick="previewGalleryPhoto(\'' + escHtml(p.id) + '\')" alt="scan" loading="lazy">' :
         '<div class="photo-gallery-thumb" style="display:flex;align-items:center;justify-content:center;font-size:24px;color:#8A8680;background:#F0EDE8;">&#x1F4C4;</div>';
       html += '<div class="photo-gallery-item" id="pg_' + escHtml(p.id) + '">' +
         thumbHtml +
@@ -3896,12 +3941,83 @@ function _renderPhotoGalleryInner(photos) {
         '</div>' +
       '</div>';
     });
+
+    // ページネーション
+    if (totalPages > 1) {
+      html += '<div class="pg-pagination">';
+      if (_scanGalleryPage > 0) {
+        html += '<button onclick="scanGalleryPrev()">&#x25C0; 前へ</button>';
+      }
+      html += '<span>' + (_scanGalleryPage + 1) + ' / ' + totalPages + 'ページ</span>';
+      if (_scanGalleryPage < totalPages - 1) {
+        html += '<button onclick="scanGalleryNext()">次へ &#x25B6;</button>';
+      }
+      html += '</div>';
+    }
+
     bodyEl.innerHTML = html;
   });
   // Update counts
   ['pgCount', 'pgCount2'].forEach(function(cid) {
     var el = document.getElementById(cid);
     if (el) el.textContent = photos.length;
+  });
+}
+
+function scanGalleryPrev() {
+  if (_scanGalleryPage > 0) { _scanGalleryPage--; _renderPhotoGalleryPage(); }
+}
+function scanGalleryNext() {
+  var totalPages = Math.ceil(_scanGalleryAllPhotos.length / _scanGalleryPerPage);
+  if (_scanGalleryPage < totalPages - 1) { _scanGalleryPage++; _renderPhotoGalleryPage(); }
+}
+
+// 古い完了済み写真の整理
+function cleanupOldScanPhotos() {
+  getScanPhotos(function(photos) {
+    var donePhotos = photos.filter(function(p) { return p.status === 'done'; });
+    var oldPhotos = photos.filter(function(p) {
+      var age = Date.now() - (p.timestamp || 0);
+      return age > 90 * 24 * 60 * 60 * 1000; // 90日以上前
+    });
+    var candidates = [];
+    var seen = {};
+    donePhotos.concat(oldPhotos).forEach(function(p) {
+      if (!seen[p.id]) { seen[p.id] = true; candidates.push(p); }
+    });
+    if (candidates.length === 0) {
+      alert('整理対象の写真はありません。\n（完了済み or 90日以上前の写真が対象です）');
+      return;
+    }
+    var msg = '以下の写真を削除しますか？\n\n' +
+      '・完了済み: ' + donePhotos.length + '枚\n' +
+      '・90日以上前: ' + oldPhotos.length + '枚\n' +
+      '（重複除く合計: ' + candidates.length + '枚）\n\n' +
+      '※ 削除前に「保存」ボタンでバックアップをおすすめします';
+    if (!confirm(msg)) return;
+    var deleted = 0;
+    candidates.forEach(function(p) {
+      deleteScanPhoto(p.id, function() {
+        deleted++;
+        if (deleted === candidates.length) { renderPhotoGallery(); }
+      });
+    });
+  });
+}
+
+// 写真エクスポート（1枚ずつダウンロード）
+function exportScanPhotos() {
+  getScanPhotos(function(photos) {
+    if (photos.length === 0) { alert('エクスポートする写真がありません。'); return; }
+    if (!confirm(photos.length + '枚の写真をダウンロードします。\nよろしいですか？')) return;
+    photos.forEach(function(p, i) {
+      setTimeout(function() {
+        var a = document.createElement('a');
+        a.href = p.dataUrl;
+        a.download = 'scan_' + (p.date || '').replace(/[\/:]/g, '-') + '_' + p.id + '.jpg';
+        document.body.appendChild(a); a.click(); a.remove();
+      }, i * 300);
+    });
   });
 }
 
@@ -5346,11 +5462,31 @@ updateStatus();renderFamily();renderSubjectSelector();renderStudyContent();rende
 window.addEventListener('load', function() {
   renderHomeAll();
   renderDateNavEvents();
+  // 既存写真のサムネイル自動マイグレーション＋カウント更新
   getScanPhotos(function(photos) {
     ['pgCount', 'pgCount2'].forEach(function(cid) {
       var el = document.getElementById(cid);
       if (el) el.textContent = photos.length;
     });
+    // サムネイル未生成の写真にサムネイルを追加
+    var noThumb = photos.filter(function(p) { return p.dataUrl && !p.thumb; });
+    if (noThumb.length > 0) {
+      console.log('[Migration] ' + noThumb.length + '枚のスキャン写真にサムネイルを生成中...');
+      noThumb.forEach(function(p) {
+        var img = new Image();
+        img.onload = function() {
+          var TH_W = 100;
+          var tw = Math.min(TH_W, img.width), th = Math.round(img.height * tw / img.width);
+          var c = document.createElement('canvas');
+          c.width = tw; c.height = th;
+          c.getContext('2d').drawImage(img, 0, 0, tw, th);
+          p.thumb = c.toDataURL('image/jpeg', 0.4);
+          c.width = 0; c.height = 0;
+          saveScanPhoto(p);
+        };
+        img.src = p.dataUrl;
+      });
+    }
   });
   try { localStorage.removeItem('scan_photos'); } catch(e) {}
   updateGeminiStatus();
