@@ -1970,18 +1970,14 @@ function sendTeacherChat(inputId,msgsId){
     var wait=Math.max(0,GEMINI_MIN_INTERVAL-( now-_lastGeminiCall));
     _lastGeminiCall=now+wait;
     setTimeout(function(){
-    callGeminiTeacher(currentTeacherChat,msg,function(aiResp,errMsg){
+    callGeminiTeacher(currentTeacherChat,msg,function(aiResp){
       hideAiTyping(mid);
       if(aiResp){
         addTeacherMsg(currentTeacherChat,aiResp+'<span class="ai-badge">AI</span>','teacher',mid);
         addFollowUpButtons(mid);
         recordGeminiUsage();
       }else{
-        // Show error info with retry button then fallback
-        if(errMsg){
-          var retryHtml='<span style="font-size:11px;color:var(--red);">\u26A0 AI\u63A5\u7D9A\u30A8\u30E9\u30FC: '+escHtml(errMsg)+'</span><br><button onclick="sendTeacherQuick(\''+escHtml(msg).replace(/'/g,"\\'")+'\',\''+iid+'\',\''+mid+'\')" style="margin-top:4px;padding:3px 10px;border-radius:12px;border:1px solid var(--accent);background:var(--bg);color:var(--accent);font-size:11px;cursor:pointer;">🔄 もう一度AI に聞く</button>';
-          addTeacherMsg(currentTeacherChat,retryHtml,'teacher',mid);
-        }
+        // AIが使えない時は静かにキーワード応答（子供にエラーを見せない）
         var resp=getTeacherResponse(currentTeacherChat,msg);
         addTeacherMsg(currentTeacherChat,resp,'teacher',mid);
       }
@@ -2178,7 +2174,7 @@ function callGeminiTeacher(teacherName,userMsg,callback){
 
   function tryModel(modelIdx){
     if(modelIdx>=models.length){
-      callback(null,'全モデルでレート制限中です。しばらく待ってからお試しください。');
+      callback(null);
       return;
     }
     var model=models[modelIdx];
@@ -2186,23 +2182,23 @@ function callGeminiTeacher(teacherName,userMsg,callback){
     console.log('Gemini: trying model '+model+'...');
     fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:bodyStr})
     .then(function(resp){
-      if(resp.status===429){
+      if(resp.status===429||resp.status===403){
         return resp.json().then(function(errData){
           var detail='';
           try{detail=errData.error.message||'';}catch(e){}
-          console.warn('Gemini 429 on '+model+': '+detail);
-          // 次のモデルを試す
-          setTimeout(function(){tryModel(modelIdx+1);},2000);
+          console.warn('Gemini '+resp.status+' on '+model+': '+detail);
+          setTimeout(function(){tryModel(modelIdx+1);},resp.status===429?2000:500);
           return null;
         }).catch(function(){
-          setTimeout(function(){tryModel(modelIdx+1);},2000);
+          setTimeout(function(){tryModel(modelIdx+1);},500);
           return null;
         });
       }
       if(!resp.ok){
         return resp.text().then(function(t){
-          console.error('Gemini error response ('+model+'): '+t);
-          throw new Error('Gemini API: '+resp.status);
+          console.warn('Gemini '+resp.status+' on '+model);
+          setTimeout(function(){tryModel(modelIdx+1);},500);
+          return null;
         });
       }
       return resp.json();
@@ -2214,13 +2210,8 @@ function callGeminiTeacher(teacherName,userMsg,callback){
       }
       callback(text||null);
     }).catch(function(err){
-      console.error('Gemini error ('+model+'):',err);
-      // ネットワークエラー等は次のモデルを試す
-      if(modelIdx<models.length-1){
-        setTimeout(function(){tryModel(modelIdx+1);},1000);
-      }else{
-        callback(null,err.message||'APIエラー');
-      }
+      console.warn('Gemini error ('+model+'):',err.message);
+      setTimeout(function(){tryModel(modelIdx+1);},500);
     });
   }
   tryModel(0);
