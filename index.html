@@ -2046,7 +2046,8 @@ function testGeminiKey(){
   var key=localStorage.getItem('gakkou_gemini_key');
   if(!key){resEl.innerHTML='❌ APIキーが未設定です';resEl.style.background='rgba(200,50,50,0.08)';return;}
 
-  var models=['gemini-2.5-flash','gemini-2.0-flash-lite','gemini-2.0-flash'];
+  // 実際にAI先生が使うモデルのみテスト（優先順）
+  var models=['gemini-2.0-flash','gemini-2.0-flash-lite'];
   var results=[];
   var done=0;
 
@@ -2060,24 +2061,23 @@ function testGeminiKey(){
       return resp.json().then(function(data){return{status:resp.status,data:data};});
     }).then(function(r){
       if(r.status===200){
-        results[idx]='✅ '+model+' → 成功！';
+        results[idx]='✅ '+model+' → OK！';
       }else{
         var msg='';
         try{msg=r.data.error.message||'';}catch(e){msg=JSON.stringify(r.data).substring(0,200);}
-        results[idx]='❌ '+model+' → '+r.status+': '+msg;
+        results[idx]='⚠️ '+model+' → '+r.status;
       }
     }).catch(function(err){
-      results[idx]='❌ '+model+' → '+err.message;
+      results[idx]='⚠️ '+model+' → '+err.message;
     }).finally(function(){
       done++;
       if(done===models.length){
         var hasSuccess=results.some(function(r){return r.indexOf('✅')>=0;});
         resEl.style.background=hasSuccess?'rgba(90,158,111,0.08)':'rgba(200,50,50,0.08)';
         resEl.style.border=hasSuccess?'1px solid rgba(90,158,111,0.2)':'1px solid rgba(200,50,50,0.2)';
-        resEl.innerHTML='<strong>テスト結果:</strong><br>'+results.join('<br>');
-        if(!hasSuccess){
-          resEl.innerHTML+='<br><br><strong>対処法:</strong><br>• <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a>でキーが有効か確認<br>• 「Generative Language API」が有効か確認<br>• 新しいキーを作り直す';
-        }
+        resEl.innerHTML=hasSuccess
+          ?'<strong>✅ AI先生は正常に動作します</strong><br>'+results.join('<br>')
+          :'<strong>⚠️ 接続できませんでした</strong><br>'+results.join('<br>')+'<br><br><strong>対処法:</strong><br>• <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a>でキーが有効か確認<br>• 「Generative Language API」が有効か確認<br>• 新しいキーを作り直す';
       }
     });
   });
