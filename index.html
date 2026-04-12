@@ -1254,16 +1254,9 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
     <div class="view" id="view-profile">
       <div class="panel"><div class="panel-header"><span class="panel-title">&#x1F464; 航太朗プロフィール</span></div><div class="panel-body" id="profileArea"></div></div>
       <div class="panel"><div class="panel-header"><span class="panel-title">&#x1F4CA; 教科別スコア</span></div><div class="panel-body" id="subjectScoresArea"></div></div>
-      <div class="panel"><div class="panel-header"><span class="panel-title">&#x1F916; AI先生設定</span></div><div class="panel-body">
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">Google Gemini APIキーを設定すると、各教科の先生がAIで答えてくれます。<br>&#x26A0; キーは端末内のみに保存され、外部には送信されません。</div>
-        <div style="margin-bottom:8px;">
-          <label style="font-size:12px;font-weight:700;color:var(--bamboo-light);display:block;margin-bottom:4px;">Gemini APIキー</label>
-          <div style="display:flex;gap:6px;">
-            <input type="password" id="geminiKeyInput" placeholder="AIzaSy..." style="flex:1;padding:8px;border:1px solid rgba(90,158,111,0.2);border-radius:8px;font-size:13px;">
-            <button onclick="saveGeminiKey()" class="quiz-btn" style="padding:8px 16px;font-size:12px;">保存</button>
-          </div>
-        </div>
-        <div id="geminiKeyStatus" style="font-size:12px;margin-bottom:8px;"></div>
+      <div class="panel"><div class="panel-header"><span class="panel-title">&#x1F916; AI先生</span></div><div class="panel-body">
+        <div id="geminiKeyStatus" style="font-size:13px;margin-bottom:10px;"></div>
+        <div id="geminiUsageInfo" style="font-size:12px;color:var(--text-dim);margin-bottom:8px;"></div>
         <div style="margin-bottom:8px;">
           <label style="font-size:12px;font-weight:700;color:var(--bamboo-light);display:block;margin-bottom:4px;">1日の使用制限</label>
           <select id="geminiDailyLimit" onchange="saveGeminiLimit()" style="padding:6px;border:1px solid rgba(90,158,111,0.2);border-radius:8px;font-size:13px;">
@@ -1273,15 +1266,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
             <option value="15">15回/日（節約）</option>
           </select>
         </div>
-        <div id="geminiUsageInfo" style="font-size:12px;color:var(--text-dim);"></div>
-        <button onclick="testGeminiKey()" class="quiz-btn" style="padding:8px 16px;font-size:12px;margin-top:8px;">🔍 APIキーをテスト</button>
         <div id="geminiTestResult" style="font-size:12px;margin-top:8px;padding:10px;border-radius:8px;display:none;"></div>
-        <div style="margin-top:10px;padding:10px;background:rgba(224,160,48,0.08);border:1px solid rgba(224,160,48,0.2);border-radius:8px;font-size:11px;color:var(--orange);">
-          <strong>&#x1F512; セキュリティ:</strong><br>
-          &#x2022; APIキーはこの端末のlocalStorageのみに保存<br>
-          &#x2022; HTMLソースコードには書き込みません<br>
-          &#x2022; Google Cloud Consoleで「アプリケーションの制限」→「HTTPリファラー」でlocalhost:8770を設定するとさらに安全です
-        </div>
       </div></div>
     </div>
     <!-- LOG -->
@@ -2022,66 +2007,7 @@ var GEMINI_LIMIT_KEY='gakkou_gemini_limit';
 var _lastGeminiCall=0;
 var GEMINI_MIN_INTERVAL=6000; // 最低6秒間隔（レート制限回避）
 var GEMINI_DEFAULT_KEY='AIzaSyD8YZoTvFp-Y21l-9O49U2O7jQVyeCNywY';
-// 既存キーが未設定・空・デフォルトと異なる場合は常にデフォルトキーで上書き（AI先生を確実に使用）
 localStorage.setItem('gakkou_gemini_key',GEMINI_DEFAULT_KEY);
-
-function saveGeminiKey(){
-  var inp=document.getElementById('geminiKeyInput');
-  var key=inp.value.trim();
-  if(!key){alert('APIキーを入力してください');return;}
-  localStorage.setItem('gakkou_gemini_key',key);
-  inp.value=key.substring(0,6)+'...';
-  inp.setAttribute('readonly','readonly');
-  setTimeout(function(){inp.value='';inp.removeAttribute('readonly');},1500);
-  updateGeminiStatus();
-  alert('✅ APIキーを保存しました');
-}
-
-function testGeminiKey(){
-  var resEl=document.getElementById('geminiTestResult');
-  resEl.style.display='block';
-  resEl.style.background='rgba(90,158,111,0.08)';
-  resEl.style.border='1px solid rgba(90,158,111,0.2)';
-  resEl.innerHTML='🔄 テスト中...';
-  var key=localStorage.getItem('gakkou_gemini_key');
-  if(!key){resEl.innerHTML='❌ APIキーが未設定です';resEl.style.background='rgba(200,50,50,0.08)';return;}
-
-  // 実際にAI先生が使うモデルのみテスト（優先順）
-  var models=['gemini-2.0-flash','gemini-2.0-flash-lite'];
-  var results=[];
-  var done=0;
-
-  models.forEach(function(model,idx){
-    var url='https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+key;
-    fetch(url,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({contents:[{role:'user',parts:[{text:'こんにちは'}]}],generationConfig:{maxOutputTokens:50}})
-    }).then(function(resp){
-      return resp.json().then(function(data){return{status:resp.status,data:data};});
-    }).then(function(r){
-      if(r.status===200){
-        results[idx]='✅ '+model+' → OK！';
-      }else{
-        var msg='';
-        try{msg=r.data.error.message||'';}catch(e){msg=JSON.stringify(r.data).substring(0,200);}
-        results[idx]='⚠️ '+model+' → '+r.status;
-      }
-    }).catch(function(err){
-      results[idx]='⚠️ '+model+' → '+err.message;
-    }).finally(function(){
-      done++;
-      if(done===models.length){
-        var hasSuccess=results.some(function(r){return r.indexOf('✅')>=0;});
-        resEl.style.background=hasSuccess?'rgba(90,158,111,0.08)':'rgba(200,50,50,0.08)';
-        resEl.style.border=hasSuccess?'1px solid rgba(90,158,111,0.2)':'1px solid rgba(200,50,50,0.2)';
-        resEl.innerHTML=hasSuccess
-          ?'<strong>✅ AI先生は正常に動作します</strong><br>'+results.join('<br>')
-          :'<strong>⚠️ 接続できませんでした</strong><br>'+results.join('<br>')+'<br><br><strong>対処法:</strong><br>• <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a>でキーが有効か確認<br>• 「Generative Language API」が有効か確認<br>• 新しいキーを作り直す';
-      }
-    });
-  });
-}
 
 function saveGeminiLimit(){
   var v=document.getElementById('geminiDailyLimit').value;
@@ -2118,10 +2044,7 @@ function updateGeminiStatus(){
   var usageEl=document.getElementById('geminiUsageInfo');
   var limitEl=document.getElementById('geminiDailyLimit');
   if(!statusEl)return;
-  var hasKey=!!localStorage.getItem('gakkou_gemini_key');
-  statusEl.innerHTML=hasKey
-    ?'<span style="color:var(--green);">\u2705 APIキー設定済み</span>'
-    :'<span style="color:var(--text-dim);">\u274C \u672A\u8A2D\u5B9A\uFF08\u30AD\u30FC\u30EF\u30FC\u30C9\u5FDC\u7B54\u30E2\u30FC\u30C9\uFF09</span>';
+  statusEl.innerHTML='<span style="color:var(--green);">✅ AI先生 ON — 各教科の先生がAIで答えてくれます</span>';
   if(usageEl){
     var used=getGeminiUsageToday();
     var limit=getGeminiDailyLimit();
