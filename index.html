@@ -6486,14 +6486,15 @@ function normalizeRomaji(s){
     ['cchi','tti'],['cch','tt'],['tchi','tti'],['tch','tt'],
     // xtu/xtsu → ltu (小さいつ)
     ['xtu','ltu'],['xtsu','ltu'],
-    // wi→i, we→e (ゐゑ対応、現代では不要だが念のため)
   ];
   for(var i=0;i<rules.length;i++){
-    // 全出現を置換
     while(s.indexOf(rules[i][0])>=0){
       s=s.replace(rules[i][0],rules[i][1]);
     }
   }
+  // nn→n の正規化（「ん」をnnで打つ人対応）
+  // ただし促音(nnn等)を壊さないよう、母音/子音の前のnnのみ
+  s=s.replace(/nn/g,'n');
   return s;
 }
 // ローマ字比較（正規化後に一致判定）
