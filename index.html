@@ -575,6 +575,10 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 .month-cal-day.sun{color:#D94E4E;}
 .month-cal-day.sat{color:#4A90A8;}
 .month-cal-day.has-memo::before{content:'';position:absolute;top:3px;right:3px;width:5px;height:5px;border-radius:50%;background:#2D9D78;}
+.month-cal-day.vac-summer{background:linear-gradient(180deg,#FFF4D6,#FFE8A3);color:#B8860B;}
+.month-cal-day.vac-winter{background:linear-gradient(180deg,#E3F2FD,#BBDEFB);color:#1565C0;}
+.month-cal-day.vac-spring{background:linear-gradient(180deg,#FCE4EC,#F8BBD0);color:#AD1457;}
+.month-cal-day.vac-summer.today,.month-cal-day.vac-winter.today,.month-cal-day.vac-spring.today{border:2px solid var(--bamboo);}
 .month-cal-selected-events{margin-top:8px;border-top:1px solid #E8E5DE;padding-top:8px;}
 .month-cal-selected-title{font-size:12px;color:#8A8680;margin-bottom:6px;}
 .month-cal-memo{margin-top:8px;border-top:1px solid #E8E5DE;padding-top:8px;}
@@ -7048,6 +7052,17 @@ function getSchoolEventsForDate(dateStr) {
     };
   });
 }
+// 休暇期間判定（星林高校R8年度）
+// 夏休み: 2026-08-01〜2026-08-24（終業式7/31→始業式8/25）
+// 冬休み: 2026-12-26〜2027-01-06（終業式12/25→始業式1/7）
+// 春休み: 2027-03-25〜2027-04-07（終業式3/24→翌年度始業式頃）
+function getVacationType(dateStr) {
+  if (dateStr >= '2026-08-01' && dateStr <= '2026-08-24') return 'summer';
+  if (dateStr >= '2026-12-26' && dateStr <= '2027-01-06') return 'winter';
+  if (dateStr >= '2027-03-25' && dateStr <= '2027-04-07') return 'spring';
+  return null;
+}
+
 function getSchoolEventsInRange(startDate, endDate) {
   // startDate, endDate はYYYY-MM-DD
   var out = [];
@@ -7372,6 +7387,26 @@ function renderMonthCalendar() {
   html += '<button onclick="changeMonth(-1)">&lt;</button>';
   html += '<span class="month-cal-title">' + monthCalYear + '\u5E74' + (monthCalMonth+1) + '\u6708</span>';
   html += '<button onclick="changeMonth(1)">&gt;</button></div>';
+  // 休暇期間の凡例（当月に該当する休暇のみ表示）
+  var vacLegend = '';
+  var monthStart = monthCalYear + '-' + String(monthCalMonth+1).padStart(2,'0') + '-01';
+  var monthEnd = monthCalYear + '-' + String(monthCalMonth+1).padStart(2,'0') + '-' + String(daysInMonth).padStart(2,'0');
+  var hasSummer = false, hasWinter = false, hasSpring = false;
+  for (var dd = 1; dd <= daysInMonth; dd++) {
+    var ds = monthCalYear + '-' + String(monthCalMonth+1).padStart(2,'0') + '-' + String(dd).padStart(2,'0');
+    var vt = getVacationType(ds);
+    if (vt === 'summer') hasSummer = true;
+    if (vt === 'winter') hasWinter = true;
+    if (vt === 'spring') hasSpring = true;
+  }
+  if (hasSummer || hasWinter || hasSpring) {
+    vacLegend = '<div style="display:flex;gap:8px;justify-content:center;margin:4px 0 6px;font-size:11px;flex-wrap:wrap;">';
+    if (hasSummer) vacLegend += '<span style="background:linear-gradient(180deg,#FFF4D6,#FFE8A3);color:#B8860B;padding:2px 8px;border-radius:10px;font-weight:700;">\u2600\uFE0F 夏休み</span>';
+    if (hasWinter) vacLegend += '<span style="background:linear-gradient(180deg,#E3F2FD,#BBDEFB);color:#1565C0;padding:2px 8px;border-radius:10px;font-weight:700;">\u2744\uFE0F 冬休み</span>';
+    if (hasSpring) vacLegend += '<span style="background:linear-gradient(180deg,#FCE4EC,#F8BBD0);color:#AD1457;padding:2px 8px;border-radius:10px;font-weight:700;">\uD83C\uDF38 春休み</span>';
+    vacLegend += '</div>';
+  }
+  html += vacLegend;
   html += '<div class="month-cal-grid">';
   ['\u65E5','\u6708','\u706B','\u6C34','\u6728','\u91D1','\u571F'].forEach(function(d) { html += '<div class="month-cal-dow">' + d + '</div>'; });
   var prevDays = new Date(monthCalYear, monthCalMonth, 0).getDate();
@@ -7384,9 +7419,13 @@ function renderMonthCalendar() {
     if (monthCalEvents[dateStr]) cls += ' has-event';
     if (monthCalSelected === dateStr) cls += ' selected';
     var isHol = (monthCalEvents[dateStr] || []).some(function(ev){ return ev._isHoliday; });
-    if (isHol) cls += ' sun';
-    if (dow === 0) cls += ' sun';
-    if (dow === 6) cls += ' sat';
+    var vac = getVacationType(dateStr);
+    if (vac) cls += ' vac-' + vac;
+    else {
+      if (isHol) cls += ' sun';
+      if (dow === 0) cls += ' sun';
+      if (dow === 6) cls += ' sat';
+    }
     if (localStorage.getItem('cal_memo_' + dateStr)) cls += ' has-memo';
     html += '<div class="' + cls + '" onclick="selectCalDay(\'' + dateStr + '\')">' + d + '</div>';
   }
