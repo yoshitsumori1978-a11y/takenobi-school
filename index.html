@@ -6849,6 +6849,8 @@ updateStatus();renderFamily();renderSubjectSelector();renderStudyContent();rende
 window.addEventListener('load', function() {
   renderHomeAll();
   renderDateNavEvents();
+  // 星林高校行事カレンダーを即時表示（Googleログイン不要）
+  try { fetchMonthEvents(); fetchTodayCalEvents(); } catch(e) { console.warn(e); }
   // 既存写真のサムネイル自動マイグレーション＋カウント更新
   getScanPhotos(function(photos) {
     ['pgCount', 'pgCount2'].forEach(function(cid) {
@@ -6896,6 +6898,174 @@ function secureLoad(key) {
 var GCAL_CLIENT_ID = secureLoad('gcal_cid_s') || '325804835579-90kjm5cr8jodjoi08k8m6jns5bvok9sc.apps.googleusercontent.com';
 var GCAL_API_KEY = secureLoad('gcal_ak_s') || '';
 var GCAL_SCOPES = 'https://www.googleapis.com/auth/calendar.events';
+
+// ============================================================
+// 星林高校 R8年度 行事予定（129件・CSV直接組み込み）
+// ============================================================
+var SCHOOL_EVENTS = [
+  {d:'2026-04-08',s:'始業式',desc:'星林高校'},
+  {d:'2026-04-09',s:'入学式',desc:'星林高校'},
+  {d:'2026-04-10',s:'新入生歓迎会',desc:'星林高校'},
+  {d:'2026-04-11',s:'4月総合学力記述模試(3年)',desc:'星林高校 外部模試'},
+  {d:'2026-04-13',s:'宿題考査①',desc:'星林高校'},
+  {d:'2026-04-14',s:'宿題考査②',desc:'星林高校'},
+  {d:'2026-04-14',s:'新入生クラス写真・身体計測',desc:'星林高校'},
+  {d:'2026-04-16',s:'クラブ仮締め切り',desc:'星林高校'},
+  {d:'2026-04-21',s:'追認考査説明会',desc:'星林高校'},
+  {d:'2026-04-22',s:'眼科健診',desc:'星林高校'},
+  {d:'2026-04-24',s:'尿検査一次・内科健診(3年)',desc:'星林高校'},
+  {d:'2026-04-29',s:'昭和の日',desc:'祝日'},
+  {d:'2026-05-01',s:'第1回追認考査②・心電図検査(1年)',desc:'星林高校'},
+  {d:'2026-05-03',s:'憲法記念日',desc:'祝日'},
+  {d:'2026-05-03',s:'①全統共テ模試(外部)',desc:'星林高校 外部模試'},
+  {d:'2026-05-04',s:'みどりの日',desc:'祝日'},
+  {d:'2026-05-05',s:'こどもの日',desc:'祝日'},
+  {d:'2026-05-06',s:'振替休日',desc:'祝日'},
+  {d:'2026-05-07',s:'内科健診(1年)',desc:'星林高校'},
+  {d:'2026-05-08',s:'学生支援機構説明会(3年)',desc:'星林高校'},
+  {d:'2026-05-11',s:'①全統記述模試(外部)',desc:'星林高校 外部模試'},
+  {d:'2026-05-12',s:'尿検査二次・眼科健診二次',desc:'星林高校'},
+  {d:'2026-05-13',s:'中間考査発表',desc:'星林高校'},
+  {d:'2026-05-14',s:'尿検査二次予備日',desc:'星林高校'},
+  {d:'2026-05-18',s:'中間考査①',desc:'星林高校 定期考査'},
+  {d:'2026-05-19',s:'中間考査②',desc:'星林高校 定期考査'},
+  {d:'2026-05-20',s:'中間考査③',desc:'星林高校 定期考査'},
+  {d:'2026-05-25',s:'実力テスト(2年共テ)',desc:'星林高校'},
+  {d:'2026-05-26',s:'実力テスト(3年共テ)',desc:'星林高校'},
+  {d:'2026-05-28',s:'歯科健診(1年)',desc:'星林高校'},
+  {d:'2026-05-31',s:'第1回英検一次',desc:'星林高校'},
+  {d:'2026-06-01',s:'就職公務員希望確認',desc:'星林高校'},
+  {d:'2026-06-04',s:'歯科健診(2年・3H)',desc:'星林高校'},
+  {d:'2026-06-05',s:'2年進学相談会(午後ビッグ愛)',desc:'星林高校'},
+  {d:'2026-06-08',s:'3年小論文模試(学研)',desc:'星林高校'},
+  {d:'2026-06-10',s:'応募前企業ガイダンス',desc:'星林高校'},
+  {d:'2026-06-11',s:'歯科健診(3A～G)',desc:'星林高校'},
+  {d:'2026-06-12',s:'第1回クラスマッチ',desc:'星林高校'},
+  {d:'2026-06-12',s:'第1回漢字検定',desc:'星林高校'},
+  {d:'2026-06-15',s:'歯科健診二次',desc:'星林高校'},
+  {d:'2026-06-17',s:'期末考査発表',desc:'星林高校'},
+  {d:'2026-06-22',s:'期末考査①',desc:'星林高校 定期考査'},
+  {d:'2026-06-23',s:'期末考査②',desc:'星林高校 定期考査'},
+  {d:'2026-06-24',s:'期末考査③',desc:'星林高校 定期考査'},
+  {d:'2026-06-25',s:'実力テスト(2年共テ)',desc:'星林高校'},
+  {d:'2026-06-26',s:'実力テスト(3年共テ)',desc:'星林高校'},
+  {d:'2026-06-28',s:'歯科健診(1年)',desc:'星林高校'},
+  {d:'2026-06-30',s:'期末考査発表',desc:'星林高校'},
+  {d:'2026-07-06',s:'実カテスト①(1・2年)',desc:'星林高校'},
+  {d:'2026-07-12',s:'第1回英検二次',desc:'星林高校'},
+  {d:'2026-07-20',s:'海の日',desc:'祝日'},
+  {d:'2026-07-22',s:'三者懇談①',desc:'星林高校'},
+  {d:'2026-07-23',s:'三者懇談②',desc:'星林高校'},
+  {d:'2026-07-26',s:'三者懇談③',desc:'星林高校'},
+  {d:'2026-07-27',s:'三者懇談④',desc:'星林高校'},
+  {d:'2026-07-31',s:'終業式',desc:'星林高校'},
+  {d:'2026-08-11',s:'山の日',desc:'祝日'},
+  {d:'2026-08-18',s:'暫定校一覧公示',desc:'星林高校'},
+  {d:'2026-08-25',s:'始業式・宿題考査①',desc:'星林高校'},
+  {d:'2026-08-26',s:'追認考査説明会',desc:'星林高校'},
+  {d:'2026-08-27',s:'宿題考査②',desc:'星林高校'},
+  {d:'2026-08-28',s:'重点清掃',desc:'星林高校'},
+  {d:'2026-08-31',s:'第2回追認考査①',desc:'星林高校'},
+  {d:'2026-09-01',s:'第2回追認考査②',desc:'星林高校'},
+  {d:'2026-09-02',s:'体育祭準備',desc:'星林高校'},
+  {d:'2026-09-03',s:'体育祭予備日',desc:'星林高校'},
+  {d:'2026-09-04',s:'体育祭',desc:'星林高校'},
+  {d:'2026-09-09',s:'文化祭準備',desc:'星林高校'},
+  {d:'2026-09-10',s:'文化祭',desc:'星林高校'},
+  {d:'2026-09-11',s:'文化祭',desc:'星林高校'},
+  {d:'2026-09-16',s:'科目選択LHR',desc:'星林高校'},
+  {d:'2026-09-21',s:'敬老の日',desc:'祝日'},
+  {d:'2026-09-22',s:'国民の休日',desc:'祝日'},
+  {d:'2026-09-23',s:'秋分の日',desc:'祝日'},
+  {d:'2026-09-25',s:'看護医療説明会②(3年)',desc:'星林高校'},
+  {d:'2026-09-26',s:'宿題考査①',desc:'星林高校'},
+  {d:'2026-09-27',s:'宿題考査②',desc:'星林高校'},
+  {d:'2026-09-28',s:'重点清掃',desc:'星林高校'},
+  {d:'2026-09-29',s:'中間考査発表',desc:'星林高校'},
+  {d:'2026-09-30',s:'科目選択本調査票提出締切',desc:'星林高校'},
+  {d:'2026-10-02',s:'第2回英検一次・第3回全統記述模試',desc:'星林高校'},
+  {d:'2026-10-03',s:'第2回英検一次(予備)',desc:'星林高校'},
+  {d:'2026-10-06',s:'中間考査①',desc:'星林高校 定期考査'},
+  {d:'2026-10-07',s:'中間考査②',desc:'星林高校 定期考査'},
+  {d:'2026-10-08',s:'中間考査③',desc:'星林高校 定期考査'},
+  {d:'2026-10-09',s:'中間考査④・第2回清掃ボランティア',desc:'星林高校 定期考査'},
+  {d:'2026-10-10',s:'ベネ駿記述模試②(3年)',desc:'星林高校 外部模試'},
+  {d:'2026-10-11',s:'タイ交流校訪問団受入',desc:'星林高校'},
+  {d:'2026-10-12',s:'スポーツの日',desc:'祝日'},
+  {d:'2026-10-13',s:'タイ交流校訪問団歓迎式',desc:'星林高校'},
+  {d:'2026-10-15',s:'科目選択本調査票配布',desc:'星林高校'},
+  {d:'2026-10-18',s:'第3回全統共通テスト模試',desc:'星林高校 外部模試'},
+  {d:'2026-10-19',s:'ベネ駿共テ模試①(3年)',desc:'星林高校 外部模試'},
+  {d:'2026-10-22',s:'重点清掃・三者懇談①',desc:'星林高校'},
+  {d:'2026-10-23',s:'三者懇談②',desc:'星林高校'},
+  {d:'2026-10-26',s:'三者懇談③',desc:'星林高校'},
+  {d:'2026-10-27',s:'三者懇談④',desc:'星林高校'},
+  {d:'2026-10-30',s:'ベネ駿共テ模試②(理社)',desc:'星林高校 外部模試'},
+  {d:'2026-11-03',s:'文化の日',desc:'祝日'},
+  {d:'2026-11-04',s:'実カテスト②(1・2年)・第3回追認考査①',desc:'星林高校'},
+  {d:'2026-11-05',s:'第3回追認考査②・第2回進路懇談',desc:'星林高校'},
+  {d:'2026-11-11',s:'生徒総会・後期役員選挙',desc:'星林高校'},
+  {d:'2026-11-13',s:'重点清掃',desc:'星林高校'},
+  {d:'2026-11-14',s:'第2回英検二次・全統プレ共通テスト模試',desc:'星林高校'},
+  {d:'2026-11-17',s:'期末考査発表',desc:'星林高校'},
+  {d:'2026-11-25',s:'理系説明会・重点清掃',desc:'星林高校'},
+  {d:'2026-12-01',s:'重点清掃',desc:'星林高校'},
+  {d:'2026-12-03',s:'期末考査①',desc:'星林高校 定期考査'},
+  {d:'2026-12-04',s:'期末考査②',desc:'星林高校 定期考査'},
+  {d:'2026-12-07',s:'期末考査③',desc:'星林高校 定期考査'},
+  {d:'2026-12-08',s:'期末考査④',desc:'星林高校 定期考査'},
+  {d:'2026-12-25',s:'終業式',desc:'星林高校'},
+  {d:'2027-01-01',s:'元日',desc:'祝日'},
+  {d:'2027-01-07',s:'始業式',desc:'星林高校'},
+  {d:'2027-01-08',s:'期末考査①',desc:'星林高校 定期考査'},
+  {d:'2027-01-11',s:'成人の日',desc:'祝日'},
+  {d:'2027-01-16',s:'大学入学共通テスト',desc:'星林高校(3年)'},
+  {d:'2027-01-17',s:'大学入学共通テスト',desc:'星林高校(3年)'},
+  {d:'2027-02-11',s:'建国記念の日',desc:'祝日'},
+  {d:'2027-02-14',s:'学年末考査発表',desc:'星林高校'},
+  {d:'2027-02-23',s:'天皇誕生日',desc:'祝日'},
+  {d:'2027-02-25',s:'学年末考査①',desc:'星林高校 定期考査'},
+  {d:'2027-02-26',s:'学年末考査②',desc:'星林高校 定期考査'},
+  {d:'2027-02-27',s:'学年末考査③',desc:'星林高校 定期考査'},
+  {d:'2027-03-01',s:'卒業式',desc:'星林高校'},
+  {d:'2027-03-07',s:'第3回英検二次',desc:'星林高校'},
+  {d:'2027-03-20',s:'春分の日',desc:'祝日'},
+  {d:'2027-03-21',s:'振替休日',desc:'祝日'},
+  {d:'2027-03-24',s:'終業式',desc:'星林高校'}
+];
+
+// 星林高校イベントをGoogleカレンダーAPI互換形式に変換
+function getSchoolEventsForDate(dateStr) {
+  return SCHOOL_EVENTS.filter(function(ev){ return ev.d === dateStr; }).map(function(ev, i){
+    return {
+      id: 'school_' + ev.d + '_' + i,
+      summary: ev.s,
+      start: { date: ev.d },
+      end: { date: ev.d },
+      description: ev.desc || '',
+      _isSchool: true,
+      _isHoliday: (ev.desc === '祝日')
+    };
+  });
+}
+function getSchoolEventsInRange(startDate, endDate) {
+  // startDate, endDate はYYYY-MM-DD
+  var out = [];
+  SCHOOL_EVENTS.forEach(function(ev, i){
+    if (ev.d >= startDate && ev.d <= endDate) {
+      out.push({
+        id: 'school_' + ev.d + '_' + i,
+        summary: ev.s,
+        start: { date: ev.d },
+        end: { date: ev.d },
+        description: ev.desc || '',
+        _isSchool: true,
+        _isHoliday: (ev.desc === '祝日')
+      });
+    }
+  });
+  return out;
+}
 var gcalAccessToken = null;
 var gapiLoaded = false;
 var gisLoaded = false;
@@ -7041,7 +7211,7 @@ function syncMonthCalSelectionFromOffset() {
   if (target.getFullYear() !== monthCalYear || target.getMonth() !== monthCalMonth) {
     monthCalYear = target.getFullYear();
     monthCalMonth = target.getMonth();
-    if (gcalAccessToken) { fetchMonthEvents(); return; }
+    fetchMonthEvents(); return;
   }
   renderMonthCalendar();
 }
@@ -7061,21 +7231,31 @@ function updateCalDayLabel() {
 }
 
 function fetchTodayCalEvents() {
-  if (!gcalAccessToken) { var btn = document.getElementById('todayCalLoginBtn'); if (btn) btn.style.display = 'block'; return; }
+  // 星林高校行事を常に表示（ログイン不要）
   var target = new Date();
   target.setDate(target.getDate() + calDayOffset);
+  var dateStr = target.getFullYear() + '-' + String(target.getMonth()+1).padStart(2,'0') + '-' + String(target.getDate()).padStart(2,'0');
+  var schoolEvents = getSchoolEventsForDate(dateStr);
+  // ログインボタンは非表示（行事は組み込み済みのため）
+  var loginBtn = document.getElementById('todayCalLoginBtn');
+  if (loginBtn) loginBtn.style.display = 'none';
+  if (!gcalAccessToken) {
+    todayCalEventsData = schoolEvents;
+    renderTodayCalEvents();
+    return;
+  }
   var startOfDay = new Date(target.getFullYear(), target.getMonth(), target.getDate(), 0, 0, 0);
   var endOfDay = new Date(target.getFullYear(), target.getMonth(), target.getDate(), 23, 59, 59);
   gapi.client.calendar.events.list({
     calendarId: 'primary', timeMin: startOfDay.toISOString(), timeMax: endOfDay.toISOString(),
     singleEvents: true, orderBy: 'startTime', maxResults: 20
   }).then(function(resp) {
-    todayCalEventsData = (resp.result.items || []);
+    todayCalEventsData = schoolEvents.concat(resp.result.items || []);
     renderTodayCalEvents();
   }, function(err) {
     console.error('Calendar fetch error:', err);
-    var empty = document.getElementById('todayCalEmpty');
-    if (empty) empty.innerHTML = '\u274C カレンダーの読み込みに失敗しました';
+    todayCalEventsData = schoolEvents;
+    renderTodayCalEvents();
   });
 }
 
@@ -7112,6 +7292,10 @@ function renderTodayCalEvents() {
       if (e) timeStr += ' - ' + String(e.getHours()).padStart(2,'0') + ':' + String(e.getMinutes()).padStart(2,'0');
     } else { timeStr = '\u7D42\u65E5'; }
     var color = 'var(--bamboo)';
+    if (ev._isHoliday) color = '#E74C3C';
+    else if (ev.description && ev.description.indexOf('定期考査') !== -1) color = '#F39C12';
+    else if (ev.description && ev.description.indexOf('外部模試') !== -1) color = '#3498DB';
+    else if (ev._isSchool) color = '#8CC85A';
     var location = ev.location || '';
     var description = ev.description || '';
     var bringItems = '';
@@ -7143,20 +7327,36 @@ var monthCalMonth = new Date().getMonth();
 var monthCalEvents = {};
 var monthCalSelected = null;
 
+function loadSchoolEventsIntoMonth() {
+  // 星林高校行事を当月分monthCalEventsに取り込む（常時呼び出し）
+  monthCalEvents = {};
+  var pad = function(n){return String(n).padStart(2,'0');};
+  var startStr = monthCalYear + '-' + pad(monthCalMonth+1) + '-01';
+  var lastDay = new Date(monthCalYear, monthCalMonth+1, 0).getDate();
+  var endStr = monthCalYear + '-' + pad(monthCalMonth+1) + '-' + pad(lastDay);
+  getSchoolEventsInRange(startStr, endStr).forEach(function(ev){
+    var d = ev.start.date;
+    if (!monthCalEvents[d]) monthCalEvents[d] = [];
+    monthCalEvents[d].push(ev);
+  });
+}
 function fetchMonthEvents() {
-  if (!gcalAccessToken) return;
+  loadSchoolEventsIntoMonth();
+  if (!gcalAccessToken) { renderMonthCalendar(); return; }
   var start = new Date(monthCalYear, monthCalMonth, 1);
   var end = new Date(monthCalYear, monthCalMonth + 1, 0, 23, 59, 59);
   gapi.client.calendar.events.list({
     calendarId: 'primary', timeMin: start.toISOString(), timeMax: end.toISOString(),
     singleEvents: true, orderBy: 'startTime', maxResults: 100
   }).then(function(resp) {
-    monthCalEvents = {};
     (resp.result.items || []).forEach(function(ev) {
       var d = ev.start.dateTime ? ev.start.dateTime.substring(0,10) : (ev.start.date || '');
       if (!monthCalEvents[d]) monthCalEvents[d] = [];
       monthCalEvents[d].push(ev);
     });
+    renderMonthCalendar();
+  }, function(err) {
+    console.error('Month fetch error:', err);
     renderMonthCalendar();
   });
 }
@@ -7183,6 +7383,8 @@ function renderMonthCalendar() {
     if (dateStr === todayStr) cls += ' today';
     if (monthCalEvents[dateStr]) cls += ' has-event';
     if (monthCalSelected === dateStr) cls += ' selected';
+    var isHol = (monthCalEvents[dateStr] || []).some(function(ev){ return ev._isHoliday; });
+    if (isHol) cls += ' sun';
     if (dow === 0) cls += ' sun';
     if (dow === 6) cls += ' sat';
     if (localStorage.getItem('cal_memo_' + dateStr)) cls += ' has-memo';
@@ -7198,7 +7400,13 @@ function renderMonthCalendar() {
     monthCalEvents[monthCalSelected].forEach(function(ev) {
       var t = ev.start.dateTime ? (function(s){ return String(s.getHours()).padStart(2,'0')+':'+String(s.getMinutes()).padStart(2,'0'); })(new Date(ev.start.dateTime)) : '終日';
       var loc = ev.location ? ' \u{1F4CD}' + escHtml2(ev.location) : '';
-      html += '<div class="today-cal-event"><div class="cal-event-dot" style="background:#D4960A;"></div><div class="cal-event-time">' + t + '</div><div class="cal-event-details"><div class="cal-event-title">' + escHtml2(ev.summary || '') + '</div>' + (loc ? '<div class="cal-event-meta">' + loc + '</div>' : '') + '</div></div>';
+      var evColor = '#D4960A';
+      if (ev._isHoliday) evColor = '#E74C3C';
+      else if (ev.description && ev.description.indexOf('定期考査') !== -1) evColor = '#F39C12';
+      else if (ev.description && ev.description.indexOf('外部模試') !== -1) evColor = '#3498DB';
+      else if (ev._isSchool) evColor = '#8CC85A';
+      var descTag = ev.description ? '<div class="cal-event-meta" style="font-size:11px;color:var(--text-dim);">' + escHtml2(ev.description) + '</div>' : '';
+      html += '<div class="today-cal-event"><div class="cal-event-dot" style="background:' + evColor + ';"></div><div class="cal-event-time">' + t + '</div><div class="cal-event-details"><div class="cal-event-title">' + escHtml2(ev.summary || '') + '</div>' + descTag + (loc ? '<div class="cal-event-meta">' + loc + '</div>' : '') + '</div></div>';
     });
     html += '</div>';
   } else if (monthCalSelected) {
@@ -7221,7 +7429,7 @@ function changeMonth(dir) {
   if (monthCalMonth < 0) { monthCalMonth = 11; monthCalYear--; }
   if (monthCalMonth > 11) { monthCalMonth = 0; monthCalYear++; }
   monthCalSelected = null;
-  if (gcalAccessToken) fetchMonthEvents(); else renderMonthCalendar();
+  fetchMonthEvents();
 }
 function selectCalDay(dateStr) {
   // トグル: 同じ日を再タップしたら選択解除＆今日に戻す
@@ -7238,7 +7446,7 @@ function selectCalDay(dateStr) {
     calDayOffset = Math.round((target.getTime() - today.getTime()) / (1000*60*60*24));
   }
   updateCalDayLabel();
-  if (gcalAccessToken) fetchTodayCalEvents();
+  fetchTodayCalEvents();
   renderMonthCalendar();
 }
 
